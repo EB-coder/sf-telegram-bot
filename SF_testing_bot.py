@@ -3,11 +3,12 @@ import random
 import json
 import os
 from flask import Flask, request
+import threading
+import time
 
-# Получаем токен из переменных окружения
 TOKEN = os.environ.get('BOT_TOKEN')
 if not TOKEN:
-    print("❌ ОШИБКА: Переменная окружения BOT_TOKEN не установлена!")
+    print("❌ ОШИБКА: BOT_TOKEN не установлен!")
     exit(1)
 
 bot = telebot.TeleBot(TOKEN)
@@ -17,8 +18,13 @@ app = Flask(__name__)
 with open("quiz_questions.json", "r", encoding="utf-8") as f:
     questions = json.load(f)
 
-# Состояние пользователей
 user_data = {}
+
+# Функция для поддержания активности
+def keep_warm():
+    while True:
+        time.sleep(300)  # 5 минут
+        print("🔥 Keeping service warm...")
 
 @bot.message_handler(commands=["start"])
 def start_quiz(message):
@@ -82,7 +88,6 @@ def handle_answer(message):
     user["current"] = None
     send_new_question(chat_id)
 
-# Webhook route
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
@@ -97,6 +102,10 @@ def webhook():
 def index():
     return '🤖 Бот запущен и работает!'
 
+@app.route('/ping')
+def ping():
+    return 'pong'
+
 if __name__ == '__main__':
     # Установка webhook
     webhook_url = f"https://{os.environ.get('RENDER_SERVICE_NAME')}.onrender.com/webhook"
@@ -104,5 +113,5 @@ if __name__ == '__main__':
     bot.set_webhook(url=webhook_url)
     print(f"✅ Webhook установлен: {webhook_url}")
     
-    # Запуск Flask на порту 10000 (требуется Render)
+    # Запуск Flask
     app.run(host='0.0.0.0', port=10000, debug=False)
