@@ -6,6 +6,7 @@ from flask import Flask, request
 
 # Получаем токен из переменных окружения
 TOKEN = os.environ.get('BOT_TOKEN')
+
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
@@ -93,8 +94,7 @@ def webhook():
 def index():
     return '🤖 Бот запущен и работает!'
 
-# Установка webhook при запуске
-@app.before_first_request
+# Установка webhook при запуске (исправленная версия)
 def set_webhook():
     webhook_url = f"https://{os.environ.get('RENDER_SERVICE_NAME', 'your-app-name')}.onrender.com/webhook"
     try:
@@ -104,12 +104,9 @@ def set_webhook():
     except Exception as e:
         print(f"Ошибка установки webhook: {e}")
 
+# Устанавливаем webhook при старте приложения
+set_webhook()
+
 if __name__ == '__main__':
-    # Если запускаем локально - используем polling
-    if os.environ.get('RENDER'):
-        # На Render используем Flask
-        app.run(host='0.0.0.0', port=5000)
-    else:
-        # Локально используем polling
-        print("🤖 Бот запущен (локально)...")
-        bot.infinity_polling()
+    # На Render используем Flask
+    app.run(host='0.0.0.0', port=5000, debug=False)
