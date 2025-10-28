@@ -1,0 +1,4 @@
+telebot
+pandas
+pyTelegramBotAPI
+Flask
