@@ -2,13 +2,10 @@ import telebot
 import random
 import json
 import os
-from flask import Flask, request
 
 # Получаем токен из переменных окружения
-TOKEN = os.environ.get('BOT_TOKEN')
 
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
 
 # Загружаем вопросы из JSON
 with open("quiz_questions.json", "r", encoding="utf-8") as f:
@@ -79,34 +76,5 @@ def handle_answer(message):
     user["current"] = None
     send_new_question(chat_id)
 
-# Webhook обработчик для Render
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    else:
-        return 'Invalid content type', 403
-
-@app.route('/')
-def index():
-    return '🤖 Бот запущен и работает!'
-
-# Установка webhook при запуске (исправленная версия)
-def set_webhook():
-    webhook_url = f"https://{os.environ.get('RENDER_SERVICE_NAME', 'your-app-name')}.onrender.com/webhook"
-    try:
-        bot.remove_webhook()
-        bot.set_webhook(url=webhook_url)
-        print(f"Webhook установлен: {webhook_url}")
-    except Exception as e:
-        print(f"Ошибка установки webhook: {e}")
-
-# Устанавливаем webhook при старте приложения
-set_webhook()
-
-if __name__ == '__main__':
-    # На Render используем Flask
-    app.run(host='0.0.0.0', port=5000, debug=False)
+print("🤖 Бот запущен...")
+bot.infinity_polling()
