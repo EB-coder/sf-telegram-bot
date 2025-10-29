@@ -3,7 +3,6 @@ import random
 import json
 import os
 
-
 # Получаем токен из переменных окружения
 TOKEN = os.environ.get('BOT_TOKEN')
 if not TOKEN:
@@ -13,7 +12,6 @@ if not TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-
 # Загружаем вопросы из JSON
 with open("quiz_questions.json", "r", encoding="utf-8") as f:
     questions = json.load(f)
@@ -22,33 +20,89 @@ with open("quiz_questions.json", "r", encoding="utf-8") as f:
 user_data = {}
 
 @bot.message_handler(commands=["start"])
-def start_quiz(message):
+def start_bot(message):
     chat_id = message.chat.id
-    random.shuffle(questions)
-    user_data[chat_id] = {
-        "remaining": questions.copy(),
-        "correct": 0,
-        "wrong": 0,
-        "current": None
-    }
-    bot.send_message(chat_id, "Привет! 🤖 Начинаем викторину!")
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add("📚 Подготовка", "🎯 Экзамен")
+    bot.send_message(
+        chat_id,
+        "🤖 Добро пожаловать в бот-викторину!\n\n"
+        "Выберите режим:\n"
+        "• 📚 **Подготовка** - все вопросы подряд\n"
+        "• 🎯 **Экзамен** - 60 случайных вопросов",
+        reply_markup=markup
+    )
+
+@bot.message_handler(func=lambda msg: msg.text in ["📚 Подготовка", "🎯 Экзамен"])
+def select_mode(message):
+    chat_id = message.chat.id
+    mode = message.text
+    
+    if mode == "📚 Подготовка":
+        # Все вопросы
+        questions_to_use = questions.copy()
+        random.shuffle(questions_to_use)
+        user_data[chat_id] = {
+            "remaining": questions_to_use,
+            "correct": 0,
+            "wrong": 0,
+            "current": None,
+            "mode": "preparation"
+        }
+        bot.send_message(chat_id, "📚 Режим: Подготовка\nВсего вопросов: " + str(len(questions)))
+        
+    elif mode == "🎯 Экзамен":
+        # 60 случайных вопросов
+        if len(questions) >= 60:
+            questions_to_use = random.sample(questions, 60)
+        else:
+            questions_to_use = questions.copy()
+        random.shuffle(questions_to_use)
+        user_data[chat_id] = {
+            "remaining": questions_to_use,
+            "correct": 0,
+            "wrong": 0,
+            "current": None,
+            "mode": "exam"
+        }
+        bot.send_message(chat_id, "🎯 Режим: Экзамен\nКоличество вопросов: 60")
+    
+    # Убираем клавиатуру после выбора
+    markup = telebot.types.ReplyKeyboardRemove()
+    bot.send_message(chat_id, "Начинаем викторину! 🚀", reply_markup=markup)
     send_new_question(chat_id)
 
 def send_new_question(chat_id):
     user = user_data[chat_id]
     if not user["remaining"]:
         total = user["correct"] + user["wrong"]
+        mode_text = "📚 Подготовка" if user["mode"] == "preparation" else "🎯 Экзамен"
+        
         bot.send_message(
             chat_id,
-            f"🏁 Викторина окончена!\n\n✅ Правильных: {user['correct']}\n❌ Неправильных: {user['wrong']}\n📊 Всего вопросов: {total}"
+            f"🏁 Викторина окончена!\n"
+            f"Режим: {mode_text}\n\n"
+            f"✅ Правильных: {user['correct']}\n"
+            f"❌ Неправильных: {user['wrong']}\n"
+            f"📊 Всего вопросов: {total}\n"
+            f"📈 Процент правильных: {user['correct']/total*100:.1f}%"
         )
+        
+        # Предлагаем начать заново
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add("📚 Подготовка", "🎯 Экзамен")
+        bot.send_message(chat_id, "Хотите пройти ещё раз?", reply_markup=markup)
         del user_data[chat_id]
         return
 
     q = user["remaining"].pop()
     user["current"] = q
 
-    text = f"❓ {q['question']}\n\n"
+    # Добавляем прогресс
+    total_questions = len(user["remaining"]) + 1
+    progress = f"({total_questions - len(user['remaining'])}/{total_questions})"
+    
+    text = f"❓ {q['question']} {progress}\n\n"
     for letter, option in q["options"].items():
         text += f"{letter}. {option}\n"
     text += "\nОтправь букву(-ы) правильных ответов (например A или A,C):"
