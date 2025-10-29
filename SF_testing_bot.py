@@ -2,6 +2,7 @@ import telebot
 import random
 import json
 import os
+from flask import Flask, request
 
 # Получаем токен из переменных окружения
 TOKEN = os.environ.get('BOT_TOKEN')
@@ -11,6 +12,7 @@ if not TOKEN:
     exit(1)
 
 bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
 # Загружаем вопросы из JSON
 with open("quiz_questions.json", "r", encoding="utf-8") as f:
@@ -73,26 +75,27 @@ def select_mode(message):
     send_new_question(chat_id)
 
 def send_new_question(chat_id):
-    user = user_data[chat_id]
-    if not user["remaining"]:
-        total = user["correct"] + user["wrong"]
-        mode_text = "📚 Подготовка" if user["mode"] == "preparation" else "🎯 Экзамен"
-        
-        bot.send_message(
-            chat_id,
-            f"🏁 Викторина окончена!\n"
-            f"Режим: {mode_text}\n\n"
-            f"✅ Правильных: {user['correct']}\n"
-            f"❌ Неправильных: {user['wrong']}\n"
-            f"📊 Всего вопросов: {total}\n"
-            f"📈 Процент правильных: {user['correct']/total*100:.1f}%"
-        )
-        
-        # Предлагаем начать заново
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        markup.add("📚 Подготовка", "🎯 Экзамен")
-        bot.send_message(chat_id, "Хотите пройти ещё раз?", reply_markup=markup)
-        del user_data[chat_id]
+    user = user_data.get(chat_id)
+    if not user or not user["remaining"]:
+        if user:
+            total = user["correct"] + user["wrong"]
+            mode_text = "📚 Подготовка" if user["mode"] == "preparation" else "🎯 Экзамен"
+            
+            bot.send_message(
+                chat_id,
+                f"🏁 Викторина окончена!\n"
+                f"Режим: {mode_text}\n\n"
+                f"✅ Правильных: {user['correct']}\n"
+                f"❌ Неправильных: {user['wrong']}\n"
+                f"📊 Всего вопросов: {total}\n"
+                f"📈 Процент правильных: {user['correct']/total*100:.1f}%" if total > 0 else "📊 Всего вопросов: 0"
+            )
+            
+            # Предлагаем начать заново
+            markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+            markup.add("📚 Подготовка", "🎯 Экзамен")
+            bot.send_message(chat_id, "Хотите пройти ещё раз?", reply_markup=markup)
+            del user_data[chat_id]
         return
 
     q = user["remaining"].pop()
@@ -137,5 +140,35 @@ def handle_answer(message):
     user["current"] = None
     send_new_question(chat_id)
 
-print("🤖 Бот запущен...")
-bot.infinity_polling()
+# Вебхук обработчики для Render
+@app.route('/')
+def index():
+    return "Бот запущен и работает! 🤖"
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    else:
+        return 'Bad request', 400
+
+if __name__ == '__main__':
+    # На Render используем порт из переменной окружения
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Удаляем вебхук если был установлен ранее
+    bot.remove_webhook()
+    
+    # Устанавливаем вебхук
+    webhook_url = os.environ.get('WEBHOOK_URL', '') + '/webhook'
+    if webhook_url:
+        bot.set_webhook(url=webhook_url)
+        print(f"✅ Вебхук установлен: {webhook_url}")
+    else:
+        print("⚠️  WEBHOOK_URL не установлен, бот будет работать в polling режиме")
+    
+    # Запускаем Flask приложение
+    app.run(host='0.0.0.0', port=port)
