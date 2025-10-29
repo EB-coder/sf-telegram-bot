@@ -41,7 +41,6 @@ def select_mode(message):
     mode = message.text
     
     if mode == "📚 Подготовка":
-        # Все вопросы
         questions_to_use = questions.copy()
         random.shuffle(questions_to_use)
         user_data[chat_id] = {
@@ -51,14 +50,10 @@ def select_mode(message):
             "current": None,
             "mode": "preparation"
         }
-        bot.send_message(chat_id, "📚 Режим: Подготовка\nВсего вопросов: " + str(len(questions)))
+        bot.send_message(chat_id, f"📚 Режим: Подготовка\nВсего вопросов: {len(questions)}")
         
     elif mode == "🎯 Экзамен":
-        # 60 случайных вопросов
-        if len(questions) >= 60:
-            questions_to_use = random.sample(questions, 60)
-        else:
-            questions_to_use = questions.copy()
+        questions_to_use = random.sample(questions, min(60, len(questions)))
         random.shuffle(questions_to_use)
         user_data[chat_id] = {
             "remaining": questions_to_use,
@@ -67,9 +62,8 @@ def select_mode(message):
             "current": None,
             "mode": "exam"
         }
-        bot.send_message(chat_id, "🎯 Режим: Экзамен\nКоличество вопросов: 60")
+        bot.send_message(chat_id, f"🎯 Режим: Экзамен\nКоличество вопросов: {len(questions_to_use)}")
     
-    # Убираем клавиатуру после выбора
     markup = telebot.types.ReplyKeyboardRemove()
     bot.send_message(chat_id, "Начинаем викторину! 🚀", reply_markup=markup)
     send_new_question(chat_id)
@@ -80,6 +74,7 @@ def send_new_question(chat_id):
         if user:
             total = user["correct"] + user["wrong"]
             mode_text = "📚 Подготовка" if user["mode"] == "preparation" else "🎯 Экзамен"
+            percentage = (user['correct'] / total * 100) if total > 0 else 0
             
             bot.send_message(
                 chat_id,
@@ -88,10 +83,9 @@ def send_new_question(chat_id):
                 f"✅ Правильных: {user['correct']}\n"
                 f"❌ Неправильных: {user['wrong']}\n"
                 f"📊 Всего вопросов: {total}\n"
-                f"📈 Процент правильных: {user['correct']/total*100:.1f}%" if total > 0 else "📊 Всего вопросов: 0"
+                f"📈 Процент правильных: {percentage:.1f}%"
             )
             
-            # Предлагаем начать заново
             markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
             markup.add("📚 Подготовка", "🎯 Экзамен")
             bot.send_message(chat_id, "Хотите пройти ещё раз?", reply_markup=markup)
@@ -101,9 +95,9 @@ def send_new_question(chat_id):
     q = user["remaining"].pop()
     user["current"] = q
 
-    # Добавляем прогресс
     total_questions = len(user["remaining"]) + 1
-    progress = f"({total_questions - len(user['remaining'])}/{total_questions})"
+    current_question = total_questions - len(user["remaining"])
+    progress = f"({current_question}/{total_questions})"
     
     text = f"❓ {q['question']} {progress}\n\n"
     for letter, option in q["options"].items():
@@ -162,13 +156,24 @@ if __name__ == '__main__':
     # Удаляем вебхук если был установлен ранее
     bot.remove_webhook()
     
-    # Устанавливаем вебхук
-    webhook_url = os.environ.get('WEBHOOK_URL', '') + '/webhook'
+    # Получаем URL приложения
+    webhook_url = os.environ.get('WEBHOOK_URL', '')
+    
     if webhook_url:
-        bot.set_webhook(url=webhook_url)
-        print(f"✅ Вебхук установлен: {webhook_url}")
+        # Убедимся, что URL правильный
+        full_webhook_url = f"{webhook_url}/webhook"
+        print(f"🔄 Пытаюсь установить вебхук: {full_webhook_url}")
+        
+        try:
+            bot.set_webhook(url=full_webhook_url)
+            print(f"✅ Вебхук успешно установлен: {full_webhook_url}")
+        except Exception as e:
+            print(f"❌ Ошибка установки вебхука: {e}")
+            print("🔄 Продолжаю без вебхука...")
     else:
-        print("⚠️  WEBHOOK_URL не установлен, бот будет работать в polling режиме")
+        print("⚠️  WEBHOOK_URL не установлен")
+        print("💡 Чтобы использовать вебхуки, установите переменную WEBHOOK_URL в настройках Render")
     
     # Запускаем Flask приложение
+    print(f"🚀 Запускаем сервер на порту {port}")
     app.run(host='0.0.0.0', port=port)
